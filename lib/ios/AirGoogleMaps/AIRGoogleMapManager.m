@@ -44,6 +44,17 @@ RCT_EXPORT_MODULE()
   AIRGoogleMap *map = [AIRGoogleMap new];
   map.bridge = self.bridge;
   map.delegate = self;
+  map.settings.consumesGesturesInView = NO;
+
+  UIPanGestureRecognizer *drag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleMapDrag:)];
+  [drag setMinimumNumberOfTouches:1];
+  [drag setMaximumNumberOfTouches:1];
+  [map addGestureRecognizer:drag];
+
+  UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handleMapDrag:)];
+  [map addGestureRecognizer:pinch];
+  return map;
+
   return map;
 }
 
@@ -67,6 +78,7 @@ RCT_EXPORT_VIEW_PROPERTY(onMapReady, RCTBubblingEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onKmlReady, RCTBubblingEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onPress, RCTBubblingEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onLongPress, RCTBubblingEventBlock)
+RCT_EXPORT_VIEW_PROPERTY(onPanDrag, RCTBubblingEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onUserLocationChange, RCTBubblingEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onChange, RCTBubblingEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onMarkerPress, RCTDirectEventBlock)
@@ -77,29 +89,6 @@ RCT_EXPORT_VIEW_PROPERTY(mapType, GMSMapViewType)
 RCT_EXPORT_VIEW_PROPERTY(minZoomLevel, CGFloat)
 RCT_EXPORT_VIEW_PROPERTY(maxZoomLevel, CGFloat)
 RCT_EXPORT_VIEW_PROPERTY(kmlSrc, NSString)
-
-RCT_EXPORT_METHOD(animateToNavigation:(nonnull NSNumber *)reactTag
-                  withRegion:(MKCoordinateRegion)region
-                  withBearing:(CGFloat)bearing
-                  withAngle:(double)angle
-                  withDuration:(CGFloat)duration)
-{
-  [self.bridge.uiManager addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-    id view = viewRegistry[reactTag];
-    if (![view isKindOfClass:[AIRGoogleMap class]]) {
-      RCTLogError(@"Invalid view returned from registry, expecting AIRGoogleMap, got: %@", view);
-    } else {
-      [CATransaction begin];
-      [CATransaction setAnimationDuration:duration/1000];
-      AIRGoogleMap *mapView = (AIRGoogleMap *)view;
-      GMSCameraPosition *camera = [AIRGoogleMap makeGMSCameraPositionFromMap:mapView andMKCoordinateRegion:region];
-      [mapView animateToCameraPosition:camera];
-      [mapView animateToViewingAngle:angle];
-      [mapView animateToBearing:bearing];
-      [CATransaction commit];
-    }
-  }];
-}
 
 RCT_EXPORT_METHOD(animateToRegion:(nonnull NSNumber *)reactTag
                   withRegion:(MKCoordinateRegion)region
@@ -472,4 +461,26 @@ RCT_EXPORT_METHOD(setMapBoundaries:(nonnull NSNumber *)reactTag
     AIRGoogleMap *googleMapView = (AIRGoogleMap *)mapView;
     [googleMapView didTapPOIWithPlaceID:placeID name:name location:location];
 }
+
+#pragma mark Gesture Recognizer Handlers
+
+- (void)handleMapDrag:(UIPanGestureRecognizer*)recognizer {
+  AIRGoogleMap *map = (AIRGoogleMap *)recognizer.view;
+  if (!map.onPanDrag) return;
+
+  CGPoint touchPoint = [recognizer locationInView:map];
+  CLLocationCoordinate2D coord = [map.projection coordinateForPoint:touchPoint];
+  map.onPanDrag(@{
+                  @"coordinate": @{
+                      @"latitude": @(coord.latitude),
+                      @"longitude": @(coord.longitude),
+                      },
+                  @"position": @{
+                      @"x": @(touchPoint.x),
+                      @"y": @(touchPoint.y),
+                      },
+                  });
+
+}
+
 @end
